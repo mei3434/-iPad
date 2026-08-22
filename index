@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>音声で挨拶アプリ（iPad用）</title>
+<style>
+  body { font-size: 28px; text-align: center; padding: 40px; }
+  button { font-size: 30px; padding: 20px 40px; }
+  #out, #reply { margin-top: 30px; font-size: 32px; }
+</style>
+</head>
+<body>
+
+<h2>🎤 音声で挨拶アプリ（iPad用）</h2>
+<button onclick="startRec()">音声認識スタート</button>
+
+<p id="out">認識：まだなし</p>
+<p id="reply">応答：まだなし</p>
+
+<script>
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+if (!SpeechRecognition) {
+  document.getElementById('reply').textContent =
+    "⚠️ このブラウザは音声認識に対応していません。Chrome/Edgeを使ってください。";
+}
+
+const r = new SpeechRecognition();
+r.lang = 'ja-JP';
+r.interimResults = false;
+
+function startRec() {
+  r.start();
+  document.getElementById('reply').textContent = "応答：聞いています…";
+}
+
+r.onresult = e => {
+  const text = e.results[0][0].transcript;
+  document.getElementById('out').textContent = "認識：" + text;
+
+  let reply = "";
+  if (text.includes("こんにちは")) reply = "こんにちは！";
+  else if (text.includes("おはよう")) reply = "おはようございます！";
+  else if (text.includes("ありがとう")) reply = "どういたしまして！";
+  else reply = "ごめんね、聞き取れなかったよ";
+
+  document.getElementById('reply').textContent = "応答：" + reply;
+
+  const u = new SpeechSynthesisUtterance(reply);
+  u.lang = "ja-JP";
+  speechSynthesis.speak(u);
+};
+</script>
+
+</body>
+</html>
