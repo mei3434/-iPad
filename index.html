@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>注文練習</title>
+  <title>注文ごっこアプリ</title>
   <style>
     body {
       font-family: "Helvetica Neue", Arial, sans-serif;
@@ -18,8 +18,6 @@
       padding: 30px;
       border-radius: 20px;
       box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-      position: relative;
-      overflow: hidden;
     }
     button {
       font-size: 1.2rem;
@@ -29,35 +27,36 @@
       border: none;
       border-radius: 50px;
       cursor: pointer;
-      margin-top: 20px;
+      margin: 10px 5px;
       box-shadow: 0 4px 0 #e04848;
     }
-    button:active {
-      transform: translateY(2px);
-      box-shadow: 0 2px 0 #e04848;
+    button:disabled {
+      background-color: #ccc;
+      box-shadow: none;
+      cursor: not-allowed;
+    }
+    .mic-btn {
+      background-color: #4ecdc4;
+      box-shadow: 0 4px 0 #3b9b94;
     }
     .status { margin-top: 15px; font-weight: bold; color: #666; }
     .response { font-size: 1.4rem; margin: 20px 0; color: #333; min-height: 2em; }
     
-    /* --- 追加：かき氷表示エリアとアニメーション --- */
     .ice-container {
-      height: 140px;
+      height: 120px;
       display: flex;
       justify-content: center;
       align-items: center;
-      margin-top: 10px;
     }
     .ice-icon {
-      font-size: 100px;
-      display: inline-block;
+      font-size: 80px;
       opacity: 0;
-      transform: scale(0.3) rotate(-10deg);
-      transition: all 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275); /* ポップにはねるアニメーション */
+      transform: scale(0.3);
+      transition: all 0.5s ease;
     }
-    /* 完成した時に付与するクラス */
     .ice-icon.show {
       opacity: 1;
-      transform: scale(1) rotate(0deg);
+      transform: scale(1);
     }
   </style>
 </head>
@@ -67,12 +66,15 @@
   <h1>🍧 お店やさんごっこ</h1>
   <p class="response" id="aiText">「スタート」を押してね！</p>
 
-  <!-- かき氷のイラスト表示エリア -->
   <div class="ice-container">
     <span id="iceIcon" class="ice-icon">🍧</span>
   </div>
   
-  <button id="startBtn">スタート！</button>
+  <div>
+    <button id="startBtn">スタート！</button>
+    <button id="micBtn" class="mic-btn" style="display:none;">🎤 おはなしする</button>
+  </div>
+  
   <div class="status" id="statusText"></div>
 </div>
 
@@ -80,42 +82,41 @@
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   
   if (!SpeechRecognition) {
-    alert("お使いのブラウザは音声認識に対応していません。Google Chromeなどでお試しください。");
+    alert("お使いのブラウザは音声認識に対応していません。Google Chrome等でお試しください。");
   }
 
   const recognition = new SpeechRecognition();
   recognition.lang = 'ja-JP';
   recognition.interimResults = false;
 
-  // 味とアイコンの対応表（拡張しやすいようにオブジェクト形式に変更）
   const flavorMap = {
-    "いちご": "🍧",
-    "ストロベリー": "🍧",
-    "メロン": "🍧",
-    "レモン": "🍧",
-    "ブルーハワイ": "🍧",
-    "チョコ": "🍫",
-    "バニラ": "🍦",
-    "ぶどう": "🍇"
+    "いちご": "🍧", "ストロベリー": "🍧", "メロン": "🍧", 
+    "レモン": "🍧", "ブルーハワイ": "🍧", "チョコ": "🍫", "バニラ": "🍦"
   };
 
   const aiText = document.getElementById('aiText');
   const statusText = document.getElementById('statusText');
   const startBtn = document.getElementById('startBtn');
+  const micBtn = document.getElementById('micBtn');
   const iceIcon = document.getElementById('iceIcon');
 
-  // AIが話す関数
+  let isSpeaking = false; // AIが話中かどうかのフラグ
+  let isListening = false; // 音声認識中かどうかのフラグ
+
+  // AIが喋る処理（音声読み上げ）
   function speak(text, onEndCallback) {
+    isSpeaking = true;
     aiText.textContent = text;
-    window.speechSynthesis.cancel();
+    window.speechSynthesis.cancel(); // 喋りを一旦クリア
 
     const uttr = new SpeechSynthesisUtterance(text);
     uttr.lang = 'ja-JP';
     uttr.rate = 0.9;
 
-    if (onEndCallback) {
-      uttr.onend = onEndCallback;
-    }
+    uttr.onend = () => {
+      isSpeaking = false;
+      if (onEndCallback) onEndCallback();
+    };
 
     window.speechSynthesis.speak(uttr);
   }
@@ -123,23 +124,35 @@
   // スタートボタン
   startBtn.addEventListener('click', () => {
     startBtn.style.display = 'none';
-    iceIcon.classList.remove('show'); // かき氷を隠す
-    
+    iceIcon.classList.remove('show');
+    statusText.textContent = "";
+
     speak("いらっしゃいませ！何味にしますか？", () => {
-      startListening();
+      // 喋り終わったら「おはなしする」ボタンを表示
+      micBtn.style.display = 'inline-block';
+      statusText.textContent = "「おはなしする」を押して喋ってね！";
     });
   });
 
-  // 音声聞き取り開始
-  function startListening() {
-    statusText.textContent = "🎤 はなしてね...";
+  // 「おはなしする」ボタンを押した時だけ音声認識を開始
+  micBtn.addEventListener('click', () => {
+    if (isSpeaking || isListening) return; // 連打防止
+
     try {
       recognition.start();
-    } catch (e) {}
-  }
+      isListening = true;
+      micBtn.disabled = true;
+      statusText.textContent = "🎤 きいているよ...（はなしてね）";
+    } catch (e) {
+      console.log(e);
+    }
+  });
 
-  // 音声認識成功時
+  // 音声を認識できたとき
   recognition.onresult = (event) => {
+    isListening = false;
+    micBtn.disabled = false;
+    
     const userSpeech = event.results[0][0].transcript;
     statusText.textContent = `「${userSpeech}」と言ったよ`;
 
@@ -152,40 +165,40 @@
     }
 
     if (foundFlavor) {
-      // 1. まず「少々お待ちください」と喋る
+      micBtn.style.display = 'none'; // マイクボタンを隠す
       speak(`${foundFlavor}味ですね。少々お待ちください！`, () => {
-        
-        // 2. 喋り終わったらアニメーション付きでイラストを表示！
-        iceIcon.textContent = flavorMap[foundFlavor]; // 味に応じたアイコン設定
-        iceIcon.classList.add('show'); // CSSアニメーション発動
+        iceIcon.textContent = flavorMap[foundFlavor];
+        iceIcon.classList.add('show');
 
-        // 3. 「お待たせしました！」と仕上げのセリフ
         setTimeout(() => {
           speak("はいどうぞ！召し上がれ！", () => {
-            statusText.textContent = "✨ 注文完了！";
-            
-            // 3秒後に「もう一度あそぶ」ボタンを出す
-            setTimeout(() => {
-              startBtn.textContent = "もういちど遊ぶ";
-              startBtn.style.display = "inline-block";
-            }, 1000);
+            startBtn.textContent = "もう一度あそぶ";
+            startBtn.style.display = "inline-block";
           });
-        }, 500);
-
+        }, 600);
       });
     } else {
-      speak("うまく聞き取れませんでした。もう一度お願いします！", () => {
-        startListening();
+      // 味が入っていなかった場合（連呼させず、ボタンを再度押させる）
+      speak("うまく聞き取れなかったよ。もう一回教えてね！", () => {
+        statusText.textContent = "「おはなしする」を押してもう一度喋ってね！";
       });
     }
   };
 
-  // エラー時
-  recognition.onerror = () => {
-    statusText.textContent = "";
-    speak("もう一度お願いします！", () => {
-      startListening();
+  // エラー・無音で終わったとき
+  recognition.onerror = (event) => {
+    isListening = false;
+    micBtn.disabled = false;
+    
+    // 自動で再実行せず、AIが促してからボタンで再開させる
+    speak("うまく聞き取れなかったよ。もう一回教えてね！", () => {
+      statusText.textContent = "「おはなしする」を押してもう一度喋ってね！";
     });
+  };
+
+  recognition.onend = () => {
+    isListening = false;
+    micBtn.disabled = false;
   };
 </script>
 
