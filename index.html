@@ -39,8 +39,8 @@
       background-color: #4ecdc4;
       box-shadow: 0 4px 0 #3b9b94;
     }
-    .status { margin-top: 15px; font-weight: bold; color: #666; }
-    .response { font-size: 1.4rem; margin: 20px 0; color: #333; min-height: 2em; }
+    .status { margin-top: 15px; font-weight: bold; font-size: 1.1rem; }
+    .response { font-size: 1.5rem; margin: 20px 0; color: #333; min-height: 2em; font-weight: bold; }
     
     .ice-container {
       height: 120px;
@@ -82,16 +82,17 @@
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   
   if (!SpeechRecognition) {
-    alert("お使いのブラウザは音声認識に対応していません。Google Chrome等でお試しください。");
+    alert("Google Chrome または Microsoft Edge でお試しください。");
   }
 
   const recognition = new SpeechRecognition();
   recognition.lang = 'ja-JP';
-  recognition.interimResults = false;
+  recognition.interimResults = true; // 喋っている途中のリアルタイム認識を有効化
+  recognition.continuous = false;
 
   const flavorMap = {
     "いちご": "🍧", "ストロベリー": "🍧", "メロン": "🍧", 
-    "レモン": "🍧", "ブルーハワイ": "🍧", "チョコ": "🍫", "バニラ": "🍦"
+    "レモン": "🍧", "ブルーハワイ": "🍧", "チョコ": "🍫", "バニラ": "🍦", "ぶどう": "🍇"
   };
 
   const aiText = document.getElementById('aiText');
@@ -100,104 +101,109 @@
   const micBtn = document.getElementById('micBtn');
   const iceIcon = document.getElementById('iceIcon');
 
-  let hasRecognized = false; // 音声認識に成功したかどうかのフラグ
-
-  // AIが喋る処理
-  function speak(text, onEndCallback) {
-    aiText.textContent = text;
-    window.speechSynthesis.cancel(); // 喋りをクリア
-
-    const uttr = new SpeechSynthesisUtterance(text);
-    uttr.lang = 'ja-JP';
-    uttr.rate = 0.9;
-
-    if (onEndCallback) {
-      uttr.onend = onEndCallback;
-    }
-
-    window.speechSynthesis.speak(uttr);
-  }
+  let isListening = false;
 
   // スタートボタン
   startBtn.addEventListener('click', () => {
     startBtn.style.display = 'none';
     iceIcon.classList.remove('show');
-    statusText.textContent = "";
-
-    speak("いらっしゃいませ！何味にしますか？", () => {
-      micBtn.style.display = 'inline-block';
-      statusText.textContent = "「おはなしする」を押して喋ってね！";
-    });
+    
+    aiText.textContent = "「いらっしゃいませ！何味にしますか？」";
+    micBtn.style.display = 'inline-block';
+    statusText.style.color = "#666";
+    statusText.textContent = "「おはなしする」を押して話しかけてね！";
   });
 
-  // 「おはなしする」ボタンを押した時
+  // おはなしするボタン
   micBtn.addEventListener('click', () => {
-    hasRecognized = false; // フラグ初期化
-    micBtn.disabled = true;
-    statusText.textContent = "🎤 きいているよ...（ゆっくり喋ってね）";
+    if (isListening) return;
 
-    // 前の音声読み上げを完全に停止してからマイクを起動（0.3秒待つ）
-    window.speechSynthesis.cancel();
-    setTimeout(() => {
-      try {
-        recognition.start();
-      } catch (e) {
-        micBtn.disabled = false;
-      }
-    }, 300);
+    try {
+      recognition.start();
+    } catch (e) {
+      console.log("Start error:", e);
+    }
   });
 
-  // 音声を正常に認識できたとき
-  recognition.onresult = (event) => {
-    hasRecognized = true;
-    const userSpeech = event.results[0][0].transcript;
-    statusText.textContent = `「${userSpeech}」と言ったよ`;
+  // マイクの起動状態
+  recognition.onstart = () => {
+    isListening = true;
+    micBtn.disabled = true;
+    statusText.style.color = "#ff6b6b";
+    statusText.textContent = "🔴 きいているよ…（「いちご」と言ってみてね）";
+  };
 
-    let foundFlavor = null;
-    for (const flavor in flavorMap) {
-      if (userSpeech.includes(flavor)) {
-        foundFlavor = flavor;
-        break;
+  // リアルタイム・最終音声認識
+  recognition.onresult = (event) => {
+    let interimTranscript = '';
+    let finalTranscript = '';
+
+    for (let i = event.resultIndex; i < event.results.length; ++i) {
+      if (event.results[i].isFinal) {
+        finalTranscript += event.results[i][0].transcript;
+      } else {
+        interimTranscript += event.results[i][0].transcript;
       }
     }
 
-    if (foundFlavor) {
-      micBtn.style.display = 'none';
-      speak(`${foundFlavor}味ですね。少々お待ちください！`, () => {
-        iceIcon.textContent = flavorMap[foundFlavor];
-        iceIcon.classList.add('show');
+    // 喋っている途中でも画面に文字を表示（反応しているか確認できるようにする）
+    const currentText = finalTranscript || interimTranscript;
+    statusText.style.color = "#333";
+    statusText.textContent = `「${currentText}」`;
+
+    // 味の判定（最終結果が出たとき）
+    if (finalTranscript) {
+      let foundFlavor = null;
+      for (const flavor in flavorMap) {
+        if (finalTranscript.includes(flavor)) {
+          foundFlavor = flavor;
+          break;
+        }
+      }
+
+      if (foundFlavor) {
+        micBtn.style.display = 'none';
+        aiText.textContent = `「${foundFlavor}味ですね。少々お待ちください！」`;
 
         setTimeout(() => {
-          speak("はいどうぞ！召し上がれ！", () => {
-            startBtn.textContent = "もう一度あそぶ";
-            startBtn.style.display = "inline-block";
-          });
-        }, 600);
-      });
-    } else {
-      // 言葉は聞き取れたが「味」が含まれていなかった場合
-      aiText.textContent = "もう一回教えてね！";
-      statusText.textContent = "「おはなしする」を押してもう一度喋ってね！";
-      micBtn.disabled = false;
+          iceIcon.textContent = flavorMap[foundFlavor];
+          iceIcon.classList.add('show');
+          aiText.textContent = "「はいどうぞ！召し上がれ！」";
+          
+          startBtn.textContent = "もう一度あそぶ";
+          startBtn.style.display = "inline-block";
+        }, 1200);
+
+      } else {
+        aiText.textContent = "「うまく聞き取れなかったよ。もう一回教えてね！」";
+      }
     }
   };
 
-  // 音声認識が終了したとき（成功・エラー問わず最後に呼ばれる）
+  // マイク認識終了時
   recognition.onend = () => {
+    isListening = false;
     micBtn.disabled = false;
-
-    // もし何も聞き取れずに終了した場合（無音エラーなど）
-    if (!hasRecognized) {
-      aiText.textContent = "うまく聞き取れなかったよ。";
-      statusText.textContent = "もう一度「おはなしする」を押して喋ってね！";
-      // ※ここで speak() を自動実行しないことで、勝手に「もう一度」と喋り出すのを完全に防ぐ
+    if (micBtn.style.display !== 'none' && !statusText.textContent.includes("と言った")) {
+      statusText.style.color = "#666";
+      statusText.textContent = "「おはなしする」を押してもう一度喋ってね！";
     }
   };
 
-  // エラー時の処理（無音エラー等で自動で喋らせない）
+  // エラー時
   recognition.onerror = (event) => {
-    console.log("Recognition error:", event.error);
-    // エラー時は何もしない（onend側でボタンを再有効化する）
+    console.error("Error:", event.error);
+    isListening = false;
+    micBtn.disabled = false;
+    statusText.style.color = "#ff5252";
+    
+    if (event.error === 'no-speech') {
+      statusText.textContent = "声が聞こえなかったよ。ボタンを押してもう一度喋ってね！";
+    } else if (event.error === 'not-allowed') {
+      statusText.textContent = "⚠️ マイクがブロックされています";
+    } else {
+      statusText.textContent = "エラーが発生しました。もう一度試してね。";
+    }
   };
 </script>
 
