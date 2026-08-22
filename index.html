@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>注文ごっこアプリ</title>
+  <title>注文練習</title>
   <style>
     body {
       font-family: "Helvetica Neue", Arial, sans-serif;
@@ -18,6 +18,8 @@
       padding: 30px;
       border-radius: 20px;
       box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+      position: relative;
+      overflow: hidden;
     }
     button {
       font-size: 1.2rem;
@@ -28,10 +30,35 @@
       border-radius: 50px;
       cursor: pointer;
       margin-top: 20px;
+      box-shadow: 0 4px 0 #e04848;
     }
-    button:hover { background-color: #ff5252; }
+    button:active {
+      transform: translateY(2px);
+      box-shadow: 0 2px 0 #e04848;
+    }
     .status { margin-top: 15px; font-weight: bold; color: #666; }
-    .response { font-size: 1.4rem; margin: 20px 0; color: #333; }
+    .response { font-size: 1.4rem; margin: 20px 0; color: #333; min-height: 2em; }
+    
+    /* --- 追加：かき氷表示エリアとアニメーション --- */
+    .ice-container {
+      height: 140px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      margin-top: 10px;
+    }
+    .ice-icon {
+      font-size: 100px;
+      display: inline-block;
+      opacity: 0;
+      transform: scale(0.3) rotate(-10deg);
+      transition: all 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275); /* ポップにはねるアニメーション */
+    }
+    /* 完成した時に付与するクラス */
+    .ice-icon.show {
+      opacity: 1;
+      transform: scale(1) rotate(0deg);
+    }
   </style>
 </head>
 <body>
@@ -39,13 +66,17 @@
 <div class="card">
   <h1>🍧 お店やさんごっこ</h1>
   <p class="response" id="aiText">「スタート」を押してね！</p>
+
+  <!-- かき氷のイラスト表示エリア -->
+  <div class="ice-container">
+    <span id="iceIcon" class="ice-icon">🍧</span>
+  </div>
   
   <button id="startBtn">スタート！</button>
   <div class="status" id="statusText"></div>
 </div>
 
 <script>
-  // 音声認識の準備
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   
   if (!SpeechRecognition) {
@@ -54,23 +85,33 @@
 
   const recognition = new SpeechRecognition();
   recognition.lang = 'ja-JP';
-  recognition.interimResults = false; // 途中の認識結果は取得しない
+  recognition.interimResults = false;
 
-  // 味のキーワードリスト
-  const flavors = ["いちご", "ストロベリー", "メロン", "レモン", "ブルーハワイ", "チョコ", "バニラ", "ぶどう"];
+  // 味とアイコンの対応表（拡張しやすいようにオブジェクト形式に変更）
+  const flavorMap = {
+    "いちご": "🍧",
+    "ストロベリー": "🍧",
+    "メロン": "🍧",
+    "レモン": "🍧",
+    "ブルーハワイ": "🍧",
+    "チョコ": "🍫",
+    "バニラ": "🍦",
+    "ぶどう": "🍇"
+  };
 
   const aiText = document.getElementById('aiText');
   const statusText = document.getElementById('statusText');
   const startBtn = document.getElementById('startBtn');
+  const iceIcon = document.getElementById('iceIcon');
 
   // AIが話す関数
   function speak(text, onEndCallback) {
     aiText.textContent = text;
-    window.speechSynthesis.cancel(); // 前の発話をキャンセル
+    window.speechSynthesis.cancel();
 
     const uttr = new SpeechSynthesisUtterance(text);
     uttr.lang = 'ja-JP';
-    uttr.rate = 0.9; // 子供が聞き取りやすいよう少しゆっくり
+    uttr.rate = 0.9;
 
     if (onEndCallback) {
       uttr.onend = onEndCallback;
@@ -79,35 +120,31 @@
     window.speechSynthesis.speak(uttr);
   }
 
-  // 「スタート」ボタンを押したときの処理
+  // スタートボタン
   startBtn.addEventListener('click', () => {
-    startBtn.style.display = 'none'; // スタートボタンを隠す
+    startBtn.style.display = 'none';
+    iceIcon.classList.remove('show'); // かき氷を隠す
     
-    // 店員の最初のあいさつ
     speak("いらっしゃいませ！何味にしますか？", () => {
-      // 話し終わったらマイクの聞き取りを開始
       startListening();
     });
   });
 
-  // 音声聞き取りの開始
+  // 音声聞き取り開始
   function startListening() {
     statusText.textContent = "🎤 はなしてね...";
     try {
       recognition.start();
-    } catch (e) {
-      // 既に実行中の場合などのエラー回避
-    }
+    } catch (e) {}
   }
 
-  // 音声を認識できたとき
+  // 音声認識成功時
   recognition.onresult = (event) => {
     const userSpeech = event.results[0][0].transcript;
     statusText.textContent = `「${userSpeech}」と言ったよ`;
 
-    // 言葉の中から味を探す
     let foundFlavor = null;
-    for (const flavor of flavors) {
+    for (const flavor in flavorMap) {
       if (userSpeech.includes(flavor)) {
         foundFlavor = flavor;
         break;
@@ -115,20 +152,36 @@
     }
 
     if (foundFlavor) {
-      // 味を聞き取れた場合
+      // 1. まず「少々お待ちください」と喋る
       speak(`${foundFlavor}味ですね。少々お待ちください！`, () => {
-        statusText.textContent = "✨ 注文完了！";
+        
+        // 2. 喋り終わったらアニメーション付きでイラストを表示！
+        iceIcon.textContent = flavorMap[foundFlavor]; // 味に応じたアイコン設定
+        iceIcon.classList.add('show'); // CSSアニメーション発動
+
+        // 3. 「お待たせしました！」と仕上げのセリフ
+        setTimeout(() => {
+          speak("はいどうぞ！召し上がれ！", () => {
+            statusText.textContent = "✨ 注文完了！";
+            
+            // 3秒後に「もう一度あそぶ」ボタンを出す
+            setTimeout(() => {
+              startBtn.textContent = "もういちど遊ぶ";
+              startBtn.style.display = "inline-block";
+            }, 1000);
+          });
+        }, 500);
+
       });
     } else {
-      // 聞き取れなかった・味が含まれていなかった場合
       speak("うまく聞き取れませんでした。もう一度お願いします！", () => {
-        startListening(); // 再度聞き取り
+        startListening();
       });
     }
   };
 
-  // 音声認識でエラーが起きたとき・無音だったとき
-  recognition.onerror = (event) => {
+  // エラー時
+  recognition.onerror = () => {
     statusText.textContent = "";
     speak("もう一度お願いします！", () => {
       startListening();
