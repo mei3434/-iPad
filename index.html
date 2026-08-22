@@ -1,54 +1,139 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta charset="UTF-8">
-<title>音声で挨拶アプリ（iPad用）</title>
-<style>
-  body { font-size: 28px; text-align: center; padding: 40px; }
-  button { font-size: 30px; padding: 20px 40px; }
-  #out, #reply { margin-top: 30px; font-size: 32px; }
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>注文ごっこアプリ</title>
+  <style>
+    body {
+      font-family: "Helvetica Neue", Arial, sans-serif;
+      text-align: center;
+      background-color: #fff8e7;
+      padding: 20px;
+    }
+    .card {
+      background: white;
+      max-width: 400px;
+      margin: 0 auto;
+      padding: 30px;
+      border-radius: 20px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    }
+    button {
+      font-size: 1.2rem;
+      padding: 15px 30px;
+      background-color: #ff6b6b;
+      color: white;
+      border: none;
+      border-radius: 50px;
+      cursor: pointer;
+      margin-top: 20px;
+    }
+    button:hover { background-color: #ff5252; }
+    .status { margin-top: 15px; font-weight: bold; color: #666; }
+    .response { font-size: 1.4rem; margin: 20px 0; color: #333; }
+  </style>
 </head>
 <body>
 
-<h2>🎤 音声で挨拶アプリ（iPad用）</h2>
-<button onclick="startRec()">音声認識スタート</button>
-
-<p id="out">認識：まだなし</p>
-<p id="reply">応答：まだなし</p>
+<div class="card">
+  <h1>🍧 お店やさんごっこ</h1>
+  <p class="response" id="aiText">「スタート」を押してね！</p>
+  
+  <button id="startBtn">スタート！</button>
+  <div class="status" id="statusText"></div>
+</div>
 
 <script>
-const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-if (!SpeechRecognition) {
-  document.getElementById('reply').textContent =
-    "⚠️ このブラウザは音声認識に対応していません。Chrome/Edgeを使ってください。";
-}
+  // 音声認識の準備
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  
+  if (!SpeechRecognition) {
+    alert("お使いのブラウザは音声認識に対応していません。Google Chromeなどでお試しください。");
+  }
 
-const r = new SpeechRecognition();
-r.lang = 'ja-JP';
-r.interimResults = false;
+  const recognition = new SpeechRecognition();
+  recognition.lang = 'ja-JP';
+  recognition.interimResults = false; // 途中の認識結果は取得しない
 
-function startRec() {
-  r.start();
-  document.getElementById('reply').textContent = "応答：聞いています…";
-}
+  // 味のキーワードリスト
+  const flavors = ["いちご", "ストロベリー", "メロン", "レモン", "ブルーハワイ", "チョコ", "バニラ", "ぶどう"];
 
-r.onresult = e => {
-  const text = e.results[0][0].transcript;
-  document.getElementById('out').textContent = "認識：" + text;
+  const aiText = document.getElementById('aiText');
+  const statusText = document.getElementById('statusText');
+  const startBtn = document.getElementById('startBtn');
 
-  let reply = "";
-  if (text.includes("こんにちは")) reply = "こんにちは！";
-  else if (text.includes("おはよう")) reply = "おはようございます！";
-  else if (text.includes("ありがとう")) reply = "どういたしまして！";
-  else reply = "ごめんね、聞き取れなかったよ";
+  // AIが話す関数
+  function speak(text, onEndCallback) {
+    aiText.textContent = text;
+    window.speechSynthesis.cancel(); // 前の発話をキャンセル
 
-  document.getElementById('reply').textContent = "応答：" + reply;
+    const uttr = new SpeechSynthesisUtterance(text);
+    uttr.lang = 'ja-JP';
+    uttr.rate = 0.9; // 子供が聞き取りやすいよう少しゆっくり
 
-  const u = new SpeechSynthesisUtterance(reply);
-  u.lang = "ja-JP";
-  speechSynthesis.speak(u);
-};
+    if (onEndCallback) {
+      uttr.onend = onEndCallback;
+    }
+
+    window.speechSynthesis.speak(uttr);
+  }
+
+  // 「スタート」ボタンを押したときの処理
+  startBtn.addEventListener('click', () => {
+    startBtn.style.display = 'none'; // スタートボタンを隠す
+    
+    // 店員の最初のあいさつ
+    speak("いらっしゃいませ！何味にしますか？", () => {
+      // 話し終わったらマイクの聞き取りを開始
+      startListening();
+    });
+  });
+
+  // 音声聞き取りの開始
+  function startListening() {
+    statusText.textContent = "🎤 はなしてね...";
+    try {
+      recognition.start();
+    } catch (e) {
+      // 既に実行中の場合などのエラー回避
+    }
+  }
+
+  // 音声を認識できたとき
+  recognition.onresult = (event) => {
+    const userSpeech = event.results[0][0].transcript;
+    statusText.textContent = `「${userSpeech}」と言ったよ`;
+
+    // 言葉の中から味を探す
+    let foundFlavor = null;
+    for (const flavor of flavors) {
+      if (userSpeech.includes(flavor)) {
+        foundFlavor = flavor;
+        break;
+      }
+    }
+
+    if (foundFlavor) {
+      // 味を聞き取れた場合
+      speak(`${foundFlavor}味ですね。少々お待ちください！`, () => {
+        statusText.textContent = "✨ 注文完了！";
+      });
+    } else {
+      // 聞き取れなかった・味が含まれていなかった場合
+      speak("うまく聞き取れませんでした。もう一度お願いします！", () => {
+        startListening(); // 再度聞き取り
+      });
+    }
+  };
+
+  // 音声認識でエラーが起きたとき・無音だったとき
+  recognition.onerror = (event) => {
+    statusText.textContent = "";
+    speak("もう一度お願いします！", () => {
+      startListening();
+    });
+  };
 </script>
 
 </body>
