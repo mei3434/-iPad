@@ -100,23 +100,20 @@
   const micBtn = document.getElementById('micBtn');
   const iceIcon = document.getElementById('iceIcon');
 
-  let isSpeaking = false; // AIが話中かどうかのフラグ
-  let isListening = false; // 音声認識中かどうかのフラグ
+  let hasRecognized = false; // 音声認識に成功したかどうかのフラグ
 
-  // AIが喋る処理（音声読み上げ）
+  // AIが喋る処理
   function speak(text, onEndCallback) {
-    isSpeaking = true;
     aiText.textContent = text;
-    window.speechSynthesis.cancel(); // 喋りを一旦クリア
+    window.speechSynthesis.cancel(); // 喋りをクリア
 
     const uttr = new SpeechSynthesisUtterance(text);
     uttr.lang = 'ja-JP';
     uttr.rate = 0.9;
 
-    uttr.onend = () => {
-      isSpeaking = false;
-      if (onEndCallback) onEndCallback();
-    };
+    if (onEndCallback) {
+      uttr.onend = onEndCallback;
+    }
 
     window.speechSynthesis.speak(uttr);
   }
@@ -128,31 +125,31 @@
     statusText.textContent = "";
 
     speak("いらっしゃいませ！何味にしますか？", () => {
-      // 喋り終わったら「おはなしする」ボタンを表示
       micBtn.style.display = 'inline-block';
       statusText.textContent = "「おはなしする」を押して喋ってね！";
     });
   });
 
-  // 「おはなしする」ボタンを押した時だけ音声認識を開始
+  // 「おはなしする」ボタンを押した時
   micBtn.addEventListener('click', () => {
-    if (isSpeaking || isListening) return; // 連打防止
+    hasRecognized = false; // フラグ初期化
+    micBtn.disabled = true;
+    statusText.textContent = "🎤 きいているよ...（ゆっくり喋ってね）";
 
-    try {
-      recognition.start();
-      isListening = true;
-      micBtn.disabled = true;
-      statusText.textContent = "🎤 きいているよ...（はなしてね）";
-    } catch (e) {
-      console.log(e);
-    }
+    // 前の音声読み上げを完全に停止してからマイクを起動（0.3秒待つ）
+    window.speechSynthesis.cancel();
+    setTimeout(() => {
+      try {
+        recognition.start();
+      } catch (e) {
+        micBtn.disabled = false;
+      }
+    }, 300);
   });
 
-  // 音声を認識できたとき
+  // 音声を正常に認識できたとき
   recognition.onresult = (event) => {
-    isListening = false;
-    micBtn.disabled = false;
-    
+    hasRecognized = true;
     const userSpeech = event.results[0][0].transcript;
     statusText.textContent = `「${userSpeech}」と言ったよ`;
 
@@ -165,7 +162,7 @@
     }
 
     if (foundFlavor) {
-      micBtn.style.display = 'none'; // マイクボタンを隠す
+      micBtn.style.display = 'none';
       speak(`${foundFlavor}味ですね。少々お待ちください！`, () => {
         iceIcon.textContent = flavorMap[foundFlavor];
         iceIcon.classList.add('show');
@@ -178,27 +175,29 @@
         }, 600);
       });
     } else {
-      // 味が入っていなかった場合（連呼させず、ボタンを再度押させる）
-      speak("うまく聞き取れなかったよ。もう一回教えてね！", () => {
-        statusText.textContent = "「おはなしする」を押してもう一度喋ってね！";
-      });
+      // 言葉は聞き取れたが「味」が含まれていなかった場合
+      aiText.textContent = "もう一回教えてね！";
+      statusText.textContent = "「おはなしする」を押してもう一度喋ってね！";
+      micBtn.disabled = false;
     }
   };
 
-  // エラー・無音で終わったとき
-  recognition.onerror = (event) => {
-    isListening = false;
+  // 音声認識が終了したとき（成功・エラー問わず最後に呼ばれる）
+  recognition.onend = () => {
     micBtn.disabled = false;
-    
-    // 自動で再実行せず、AIが促してからボタンで再開させる
-    speak("うまく聞き取れなかったよ。もう一回教えてね！", () => {
-      statusText.textContent = "「おはなしする」を押してもう一度喋ってね！";
-    });
+
+    // もし何も聞き取れずに終了した場合（無音エラーなど）
+    if (!hasRecognized) {
+      aiText.textContent = "うまく聞き取れなかったよ。";
+      statusText.textContent = "もう一度「おはなしする」を押して喋ってね！";
+      // ※ここで speak() を自動実行しないことで、勝手に「もう一度」と喋り出すのを完全に防ぐ
+    }
   };
 
-  recognition.onend = () => {
-    isListening = false;
-    micBtn.disabled = false;
+  // エラー時の処理（無音エラー等で自動で喋らせない）
+  recognition.onerror = (event) => {
+    console.log("Recognition error:", event.error);
+    // エラー時は何もしない（onend側でボタンを再有効化する）
   };
 </script>
 
