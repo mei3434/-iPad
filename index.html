@@ -40,7 +40,7 @@
       box-shadow: 0 4px 0 #3b9b94;
     }
     .status { margin-top: 15px; font-weight: bold; font-size: 1.1rem; }
-    .response { font-size: 1.5rem; margin: 20px 0; color: #333; min-height: 2em; font-weight: bold; }
+    .response { font-size: 1.4rem; margin: 20px 0; color: #333; min-height: 2em; font-weight: bold; }
     
     .ice-container {
       height: 120px;
@@ -90,7 +90,6 @@
   recognition.interimResults = true;
   recognition.continuous = false;
 
-  // 味のキーワード辞書（表記の揺れに対応できるように配列で指定）
   const flavorRules = [
     { name: "いちご", keywords: ["いちご", "イチゴ", "苺", "ストロベリー"], icon: "🍧" },
     { name: "メロン", keywords: ["メロン", "めろん"], icon: "🍧" },
@@ -109,31 +108,62 @@
 
   let isListening = false;
 
+  // AIに安全に喋らせる関数
+  function speak(text, onEndCallback) {
+    aiText.textContent = text;
+    window.speechSynthesis.cancel(); // 前の発話をリセット
+
+    const uttr = new SpeechSynthesisUtterance(text);
+    uttr.lang = 'ja-JP';
+    uttr.rate = 0.9; // 少しゆっくり
+
+    uttr.onend = () => {
+      // 喋り終わってから少し間（0.2秒）を空けて次の処理へ進むことで干渉を防ぐ
+      setTimeout(() => {
+        if (onEndCallback) onEndCallback();
+      }, 200);
+    };
+
+    uttr.onerror = () => {
+      if (onEndCallback) onEndCallback();
+    };
+
+    window.speechSynthesis.speak(uttr);
+  }
+
+  // スタートボタン
   startBtn.addEventListener('click', () => {
     startBtn.style.display = 'none';
     iceIcon.classList.remove('show');
     
-    aiText.textContent = "「いらっしゃいませ！何味にしますか？」";
-    micBtn.style.display = 'inline-block';
-    statusText.style.color = "#666";
-    statusText.textContent = "「おはなしする」を押して話しかけてね！";
+    speak("いらっしゃいませ！何味にしますか？", () => {
+      micBtn.style.display = 'inline-block';
+      statusText.style.color = "#666";
+      statusText.textContent = "「おはなしする」を押して話しかけてね！";
+    });
   });
 
+  // おはなしするボタン
   micBtn.addEventListener('click', () => {
     if (isListening) return;
 
-    try {
-      recognition.start();
-    } catch (e) {
-      console.log("Start error:", e);
-    }
+    // ボタンを押したらAIの喋りを即停止
+    window.speechSynthesis.cancel();
+
+    setTimeout(() => {
+      try {
+        recognition.start();
+      } catch (e) {
+        console.log("Start error:", e);
+      }
+    }, 200);
   });
 
   recognition.onstart = () => {
     isListening = true;
     micBtn.disabled = true;
     statusText.style.color = "#ff6b6b";
-    statusText.textContent = "🔴 きいているよ…";
+    statusText.textContent = "🔴 きいているよ…（「いちご味ください」など）";
   };
 
   recognition.onresult = (event) => {
@@ -152,11 +182,9 @@
     statusText.style.color = "#333";
     statusText.textContent = `「${currentText}」`;
 
-    // 確定した文章から味を判定
     if (finalTranscript) {
       let matchedFlavor = null;
 
-      // 辞書と照らし合わせて判定
       for (const rule of flavorRules) {
         for (const kw of rule.keywords) {
           if (finalTranscript.includes(kw)) {
@@ -169,19 +197,23 @@
 
       if (matchedFlavor) {
         micBtn.style.display = 'none';
-        aiText.textContent = `「${matchedFlavor.name}味ですね。少々お待ちください！」`;
-
-        setTimeout(() => {
+        
+        // 1. 「〜味ですね」と喋る
+        speak(`${matchedFlavor.name}味ですね。少々お待ちください！`, () => {
           iceIcon.textContent = matchedFlavor.icon;
           iceIcon.classList.add('show');
-          aiText.textContent = "「はいどうぞ！召し上がれ！」";
           
-          startBtn.textContent = "もう一度あそぶ";
-          startBtn.style.display = "inline-block";
-        }, 1200);
+          // 2. 「はいどうぞ！」と喋る
+          speak("はいどうぞ！召し上がれ！", () => {
+            startBtn.textContent = "もう一度あそぶ";
+            startBtn.style.display = "inline-block";
+          });
+        });
 
       } else {
-        aiText.textContent = "「うまく聞き取れなかったよ。もう一回教えてね！」";
+        speak("うまく聞き取れなかったよ。もう一回教えてね！", () => {
+          statusText.textContent = "「おはなしする」を押してもう一度喋ってね！";
+        });
       }
     }
   };
@@ -189,10 +221,6 @@
   recognition.onend = () => {
     isListening = false;
     micBtn.disabled = false;
-    if (micBtn.style.display !== 'none' && !statusText.textContent.includes("と言った")) {
-      statusText.style.color = "#666";
-      statusText.textContent = "「おはなしする」を押してもう一度喋ってね！";
-    }
   };
 
   recognition.onerror = (event) => {
